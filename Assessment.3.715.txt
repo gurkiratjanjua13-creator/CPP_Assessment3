@@ -1,0 +1,483 @@
+// mlb0000715, MIT-103, Assessment-3
+// Gurkirat Singh
+
+#include <iostream>
+#include <string>
+#include <vector>
+#include <ctime>
+#include <climits>
+#include <fstream>   // PART 1 - file handling
+#include <queue>     // PART 3
+#include <map>       // PART 3
+using namespace std;
+
+//------------------------------------
+// Safe number input
+//------------------------------------
+int getNumberInput(string prompt) {
+    int value;
+    while (true) {
+        cout << prompt;
+        cin >> value;
+
+        if (cin.fail()) {
+            cin.clear();
+            cin.ignore(1000, '\n');
+            cout << " Invalid input! Please enter a number.\n";
+        } else {
+            cin.ignore(1000, '\n');
+            return value;
+        }
+    }
+}
+
+//------------------------------------
+// Item Class
+//------------------------------------
+class Item {
+public:
+    string name;
+    int quantity;
+    double unitPrice;
+
+    Item(string itemName, int qty, double price) {
+        name = itemName;
+        quantity = qty;
+        unitPrice = price;
+    }
+
+    double getTotalPrice() const {
+        return quantity * unitPrice;
+    }
+
+    string toString() const {
+        return name + " x" + to_string(quantity);
+    }
+};
+
+//------------------------------------
+// Invoice Struct
+//------------------------------------
+struct Invoice {
+    int serialNumber;
+    string date;
+    vector<Item> items;
+
+    double calculateTotal() {
+        double total = 0;
+        for (auto &item : items) total += item.getTotalPrice();
+        return total;
+    }
+};
+
+//------------------------------------
+// Get Current Date
+//------------------------------------
+string getCurrentDate() {
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+    return to_string(ltm->tm_mday) + "/"
+         + to_string(1 + ltm->tm_mon) + "/"
+         + to_string(1900 + ltm->tm_year);
+}
+
+//------------------------------------
+// PART 3 (New) - Queue + Map
+//------------------------------------
+queue<int> recentInvoices;       
+map<int, Invoice> invoiceMap;   // faster search
+
+//------------------------------------
+// PART 1 (New) - Save to File
+//------------------------------------
+void saveToFile(const vector<Invoice> &allInvoices) {
+    ofstream out("invoices.txt");
+
+    if (!out.is_open()) {
+        cout << "Error saving file.\n";
+        return;
+    }
+
+    for (auto &inv : allInvoices) {
+        out << inv.serialNumber << endl;
+        out << inv.date << endl;
+        out << inv.items.size() << endl;
+
+        for (auto &it : inv.items) {
+            out << it.name << "," 
+                << it.quantity << "," 
+                << it.unitPrice << endl;
+        }
+    }
+
+    out.close();
+    cout << "✔ All invoices saved successfully.\n";
+}
+
+//------------------------------------
+// PART 1 (New) - Load from File
+//------------------------------------
+void loadFromFile(vector<Invoice> &allInvoices, int &invoiceCounter) {
+    ifstream in("invoices.txt");
+    if (!in.is_open()) {
+        cout << "No saved invoices found.\n";
+        return;
+    }
+
+    while (!in.eof()) {
+        Invoice inv;
+
+        in >> inv.serialNumber;
+        if (in.eof()) break;
+        in.ignore();
+
+        getline(in, inv.date);
+
+        int count;
+        in >> count;
+        in.ignore();
+
+        for (int i = 0; i < count; i++) {
+            string line;
+            getline(in, line);
+            if (line == "") continue;
+
+            size_t p1 = line.find(',');
+            size_t p2 = line.find(',', p1 + 1);
+
+            string name = line.substr(0, p1);
+            int qty = stoi(line.substr(p1 + 1, p2 - p1 - 1));
+            double price = stod(line.substr(p2 + 1));
+
+            inv.items.push_back(Item(name, qty, price));
+        }
+
+        allInvoices.push_back(inv);
+
+        invoiceMap[inv.serialNumber] = inv;
+        recentInvoices.push(inv.serialNumber);
+        if (recentInvoices.size() > 5) recentInvoices.pop();
+
+        if (inv.serialNumber >= invoiceCounter)
+            invoiceCounter = inv.serialNumber + 1;
+    }
+
+    cout << "✔ Previous invoices loaded.\n";
+}
+
+//------------------------------------
+// SORT FUNCTIONS
+//------------------------------------
+void sortInvoicesBySerial(vector<Invoice> &allInvoices) {
+    for (int i = 0; i < allInvoices.size() - 1; i++)
+        for (int j = 0; j < allInvoices.size() - i - 1; j++)
+            if (allInvoices[j].serialNumber > allInvoices[j + 1].serialNumber)
+                swap(allInvoices[j], allInvoices[j + 1]);
+}
+
+void sortInvoicesByTotal(vector<Invoice> &allInvoices) {
+    for (int i = 0; i < allInvoices.size() - 1; i++)
+        for (int j = 0; j < allInvoices.size() - i - 1; j++)
+            if (allInvoices[j].calculateTotal() > allInvoices[j + 1].calculateTotal())
+                swap(allInvoices[j], allInvoices[j + 1]);
+}
+
+//------------------------------------
+// FAST SEARCH (MAP)
+//------------------------------------
+void searchFast(int serial) {
+    if (invoiceMap.find(serial) == invoiceMap.end()) {
+        cout << "Invoice not found.\n";
+        return;
+    }
+
+    Invoice inv = invoiceMap[serial];
+    cout << "\nFAST SEARCH RESULT\n";
+    cout << "Invoice #" << inv.serialNumber << "   Date: " << inv.date << endl;
+
+    for (auto &item : inv.items) {
+        cout << item.toString() << "  Total: $" << item.getTotalPrice() << endl;
+    }
+
+    cout << "Grand Total: $" << inv.calculateTotal() << endl;
+}
+
+//------------------------------------
+// MAIN PROGRAM
+//------------------------------------
+int main() {
+    int mainmenu;
+    vector<Invoice> allInvoices;
+    int invoiceCounter = 1;
+
+    loadFromFile(allInvoices, invoiceCounter);
+
+    do {
+        cout << "\n====== MAIN MENU ======\n";
+        cout << "1. New Order\n";
+        cout << "2. Order Updation\n";
+        cout << "3. Invoice List\n";
+        cout << "4. Order Info\n";
+        cout << "5. Sort/Search Invoices\n";
+        cout << "6. Save & Exit\n";
+
+        mainmenu = getNumberInput("Choose option: ");
+
+        switch (mainmenu) {
+
+        //=====================================
+        // 1. NEW ORDER
+        //=====================================
+        case 1: {
+            char moreInvoices;
+
+            do {
+                Invoice newInvoice;
+                newInvoice.serialNumber = invoiceCounter++;
+                newInvoice.date = getCurrentDate();
+
+                int menuChoice;
+                cout << "\nStarting new invoice #" << newInvoice.serialNumber << "...\n";
+
+                do {
+                    cout << "\nWhat would you like to have?\n";
+                    cout << "1 - Pizza\n2 - Burger\n3 - French Fries\n4 - Garlic Bread\n5 - Soft Drink\n6 - Finish Order\n";
+
+                    menuChoice = getNumberInput("Choose any item (1-6): ");
+
+                    // All your menu items kept same (Pizza, Burger, Fries, etc)
+                    if (menuChoice == 1) {
+                        int size = getNumberInput("Pizza Size: 1- Regular 2- Giant: ");
+                        int type = getNumberInput("Pizza Types: 1- Margherita 2- Farmhouse 3- Fresh Veggie: ");
+                        int qty = getNumberInput("Enter quantity: ");
+
+                        string sizeName = (size == 1 ? "Regular" : "Giant");
+                        string typeName =
+                            (type == 1 ? "Margherita" :
+                             type == 2 ? "Farmhouse" : "Fresh Veggie");
+
+                        double price = 0;
+                        if (size == 1) {
+                            if (type == 1) price = 13;
+                            else price = 15;
+                        } else {
+                            if (type == 1) price = 22;
+                            else price = 24;
+                        }
+
+                        string finalName = sizeName + " " + typeName + " Pizza";
+                        newInvoice.items.push_back(Item(finalName, qty, price));
+                    }
+
+                    else if (menuChoice == 2) {
+                        int type = getNumberInput("Burger Types: 1- Cheese 2- English 3- Fried Crunch: ");
+                        int qty = getNumberInput("Enter quantity: ");
+
+                        string name = 
+                            (type == 1 ? "Cheese Burger" :
+                             type == 2 ? "English Burger" : "Fried Crunch Burger");
+
+                        newInvoice.items.push_back(Item(name, qty, 14));
+                    }
+
+                    else if (menuChoice == 3) {
+                        int type = getNumberInput("Fries: 1- Peri-Peri 2- Plain: ");
+                        int qty = getNumberInput("Enter quantity: ");
+                        string name = (type == 1 ? "Peri-Peri Fries" : "Plain Fries");
+                        double price = (type == 1 ? 15 : 10);
+
+                        newInvoice.items.push_back(Item(name, qty, price));
+                    }
+
+                    else if (menuChoice == 4) {
+                        int type = getNumberInput("Garlic Bread: 1- Plain 2- Stuffed: ");
+                        int qty = getNumberInput("Enter quantity: ");
+
+                        string name = (type == 1 ? "Plain Garlic Bread" : "Stuffed Garlic Bread");
+                        double price = (type == 1 ? 8 : 12);
+
+                        newInvoice.items.push_back(Item(name, qty, price));
+                    }
+
+                    else if (menuChoice == 5) {
+                        int type = getNumberInput("Soft Drink: 1- Cola 2- 7UP 3- Sprite: ");
+                        int qty = getNumberInput("Enter quantity: ");
+
+                        string name = (type == 1 ? "Cola" :
+                                       type == 2 ? "7UP" : "Sprite");
+
+                        newInvoice.items.push_back(Item(name, qty, 6));
+                    }
+
+                    else if (menuChoice != 6) {
+                        cout << "Invalid choice.\n";
+                    }
+
+                } while (menuChoice != 6);
+
+                allInvoices.push_back(newInvoice);
+                invoiceMap[newInvoice.serialNumber] = newInvoice;
+
+                recentInvoices.push(newInvoice.serialNumber);
+                if (recentInvoices.size() > 5) recentInvoices.pop();
+
+                cout << "Generate another invoice? (y/n): ";
+                cin >> moreInvoices;
+                cin.ignore();
+
+            } while (moreInvoices == 'y' || moreInvoices == 'Y');
+
+            break;
+        }
+
+        //=====================================
+        // 2. ORDER UPDATION (unchanged)
+        //=====================================
+        case 2: {
+            if (allInvoices.empty()) {
+                cout << "No invoices available.\n";
+                break;
+            }
+
+            cout << "Available Invoices:\n";
+            for (auto &inv : allInvoices)
+                cout << "Invoice #" << inv.serialNumber << endl;
+
+            int invNum = getNumberInput("Enter invoice number: ");
+            bool found = false;
+
+            for (auto &inv : allInvoices) {
+                if (inv.serialNumber == invNum) {
+                    found = true;
+
+                    cout << "\nItems in Invoice:\n";
+                    for (int i = 0; i < inv.items.size(); i++) {
+                        cout << i + 1 << ". " << inv.items[i].toString()
+                             << " ($" << inv.items[i].unitPrice << " each)\n";
+                    }
+
+                    int choice = getNumberInput("\n1. Update Item\n2. Delete Item\nChoose: ");
+
+                    if (choice == 1) {
+                        int idx = getNumberInput("Enter item number: ");
+                        if (idx >= 1 && idx <= inv.items.size()) {
+                            int newQty = getNumberInput("Enter new quantity: ");
+                            inv.items[idx - 1].quantity = newQty;
+                            invoiceMap[inv.serialNumber] = inv;
+                            cout << "Item updated!\n";
+                        }
+                    }
+
+                    else if (choice == 2) {
+                        int idx = getNumberInput("Enter item number to delete: ");
+                        if (idx >= 1 && idx <= inv.items.size()) {
+                            inv.items.erase(inv.items.begin() + (idx - 1));
+                            invoiceMap[inv.serialNumber] = inv;
+                            cout << "Item deleted!\n";
+                        }
+                    }
+
+                    break;
+                }
+            }
+
+            if (!found) cout << "Invoice not found.\n";
+
+            break;
+        }
+
+        //=====================================
+        // 3. INVOICE LIST (unchanged)
+        //=====================================
+        case 3: {
+            if (allInvoices.empty()) {
+                cout << "No invoices available.\n";
+            } else {
+                for (auto &inv : allInvoices) {
+                    cout << "\n===== INVOICE #" << inv.serialNumber << " =====\n";
+                    cout << "Date: " << inv.date << endl;
+
+                    for (auto &item : inv.items) {
+                        cout << item.toString() << "   $" << item.getTotalPrice() << endl;
+                    }
+
+                    cout << "---------------------------------------------\n";
+                    cout << "GRAND TOTAL: $" << inv.calculateTotal() << endl;
+                }
+            }
+            break;
+        }
+
+        //=====================================
+        // 4. ORDER INFO (unchanged)
+        //=====================================
+        case 4: {
+            if (allInvoices.empty()) {
+                cout << "No active orders.\n";
+            } else {
+                for (auto &inv : allInvoices) {
+                    cout << "\nInvoice #" << inv.serialNumber
+                         << "   Date: " << inv.date << "\n";
+
+                    for (auto &item : inv.items) {
+                        cout << "- " << item.toString()
+                             << "   Total: $" << item.getTotalPrice() << endl;
+                    }
+                }
+            }
+            break;
+        }
+
+        //=====================================
+        // 5. SORT / SEARCH
+        //=====================================
+        case 5: {
+            if (allInvoices.empty()) {
+                cout << "No invoices available.\n";
+                break;
+            }
+
+            int option;
+            cout << "\n1 - Sort by Serial Number\n";
+            cout << "2 - Sort by Total Price\n";
+            cout << "3 - Search by Serial Number (Fast)\n";
+            option = getNumberInput("Choose option: ");
+
+            if (option == 1) {
+                sortInvoicesBySerial(allInvoices);
+                cout << "Invoices sorted by serial number.\n";
+            }
+
+            else if (option == 2) {
+                sortInvoicesByTotal(allInvoices);
+                cout << "Invoices sorted by total price.\n";
+            }
+
+            else if (option == 3) {
+                int serial = getNumberInput("Enter serial number: ");
+                searchFast(serial);
+            }
+
+            else {
+                cout << "Invalid option.\n";
+            }
+
+            break;
+        }
+
+        //=====================================
+        // 6. SAVE & EXIT (new)
+        //=====================================
+        case 6:
+            saveToFile(allInvoices);
+            cout << "Thank you for visiting!\n";
+            break;
+
+        default:
+            cout << "Invalid main menu option.\n";
+        }
+
+    } while (mainmenu != 6);
+
+    return 0;
+}
